@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8088:8088"
+    environment:
+      HUB_URL: "${HUB_URL}"
+      BASE_URL: "${BASE_URL}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+      DB_PATH: /data/github.db
+    volumes:
+      - app-data:/data
+    restart: unless-stopped
+
+volumes:
+  app-data:
