@@ -21,6 +21,26 @@ export class HubClient {
   }
 
   /**
+   * 同步工具定义到 Hub（PUT /bot/v1/app/tools）
+   */
+  async syncTools(tools: import("./types.js").ToolDefinition[]): Promise<void> {
+    const url = `${this.hubUrl}/bot/v1/app/tools`;
+    const resp = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.appToken}`,
+      },
+      body: JSON.stringify({ tools }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(`[hub-client] syncTools 失败 [${resp.status}]: ${errText}`);
+    }
+  }
+
+  /**
    * 通用消息发送方法
    * @param to 目标微信用户 ID
    * @param type 消息类型（text 等）

@@ -7,20 +7,16 @@
  * 3. 使用内存 SQLite 存储 + Mock Octokit
  * 4. 验证命令路由和工具执行
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import http from "node:http";
 import { Store } from "../../src/store.js";
 import { handleWebhook } from "../../src/hub/webhook.js";
 import { HubClient } from "../../src/hub/client.js";
 import { Router } from "../../src/router.js";
 import { collectAllTools } from "../../src/tools/index.js";
-import type { ToolHandler } from "../../src/hub/types.js";
 import {
   startMockHub,
   injectCommand,
-  getMessages,
-  resetMock,
-  waitFor,
   MOCK_HUB_URL,
   MOCK_WEBHOOK_SECRET,
   MOCK_APP_TOKEN,
@@ -186,24 +182,15 @@ describe("GitHub App 集成测试", () => {
       const url = new URL(req.url!, `http://localhost:${APP_PORT}`);
 
       if (req.method === "POST" && url.pathname === "/hub/webhook") {
-        await handleWebhook(req, res, store, async (event, installation) => {
-          if (!event.event) return;
-
-          if (event.event.type === "command") {
+        await handleWebhook(req, res, {
+          store,
+          onCommand: async (event, installation) => {
+            if (!event.event) return null;
             const hubClient = new HubClient(installation.hubUrl, installation.appToken);
-            const result = await router.handleCommand(event, installation, hubClient);
-
-            if (result) {
-              const userId = event.event.data.user_id ?? event.event.data.from ?? "";
-              if (userId) {
-                try {
-                  await hubClient.sendText(userId, result, event.trace_id);
-                } catch (err) {
-                  console.error("[test] 回复失败:", err);
-                }
-              }
-            }
-          }
+            return router.handleCommand(event, installation, hubClient);
+          },
+          getHubClient: (installation) =>
+            new HubClient(installation.hubUrl, installation.appToken),
         });
         return;
       }
@@ -238,10 +225,6 @@ describe("GitHub App 集成测试", () => {
     store.close();
   });
 
-  beforeEach(() => {
-    resetMock();
-  });
-
   // ─── 基础健康检查 ───
 
   it("Mock Hub Server 健康检查", async () => {
@@ -261,49 +244,30 @@ describe("GitHub App 集成测试", () => {
   // ─── 命令执行测试 ───
 
   it("list_repos 命令应通过 Hub 链路返回仓库列表", async () => {
-    await injectCommand("list_repos", {});
+    const result = await injectCommand("list_repos", {});
 
-    await waitFor(async () => {
-      const msgs = await getMessages();
-      return msgs.length > 0;
-    }, 5000);
-
-    const msgs = await getMessages();
-    expect(msgs.length).toBe(1);
-    expect(msgs[0].to).toBe("test-user");
-    expect(msgs[0].type).toBe("text");
-    expect(msgs[0].content).toContain("test-user/my-repo");
+    // 同步返回场景：reply 字段包含结果
+    expect(result.app_response.reply).toBeDefined();
+    expect(result.app_response.reply).toContain("test-user/my-repo");
   });
 
   it("create_issue 命令应通过 Hub 链路返回创建结果", async () => {
-    await injectCommand("create_issue", {
+    const result = await injectCommand("create_issue", {
       owner: "test-user",
       repo: "my-repo",
       title: "New Issue from WeChat",
     });
 
-    await waitFor(async () => {
-      const msgs = await getMessages();
-      return msgs.length > 0;
-    }, 5000);
-
-    const msgs = await getMessages();
-    expect(msgs.length).toBe(1);
-    expect(msgs[0].content).toContain("创建成功");
-    expect(msgs[0].content).toContain("#99");
+    expect(result.app_response.reply).toBeDefined();
+    expect(result.app_response.reply).toContain("创建成功");
+    expect(result.app_response.reply).toContain("#99");
   });
 
   it("未知命令应返回错误提示", async () => {
-    await injectCommand("nonexistent_command", {});
+    const result = await injectCommand("nonexistent_command", {});
 
-    await waitFor(async () => {
-      const msgs = await getMessages();
-      return msgs.length > 0;
-    }, 5000);
-
-    const msgs = await getMessages();
-    expect(msgs.length).toBe(1);
-    expect(msgs[0].content).toContain("未知命令");
+    expect(result.app_response.reply).toBeDefined();
+    expect(result.app_response.reply).toContain("未知命令");
   });
 
   // ─── Webhook 验证测试 ───
@@ -355,30 +319,18 @@ describe("GitHub App 集成测试", () => {
   });
 
   it("list_pulls 命令应返回 PR 列表", async () => {
-    await injectCommand("list_pulls", { owner: "test-user", repo: "my-repo" });
+    const result = await injectCommand("list_pulls", { owner: "test-user", repo: "my-repo" });
 
-    await waitFor(async () => {
-      const msgs = await getMessages();
-      return msgs.length > 0;
-    }, 5000);
-
-    const msgs = await getMessages();
-    expect(msgs.length).toBe(1);
-    expect(msgs[0].content).toContain("PR 列表");
-    expect(msgs[0].content).toContain("#10");
+    expect(result.app_response.reply).toBeDefined();
+    expect(result.app_response.reply).toContain("PR 列表");
+    expect(result.app_response.reply).toContain("#10");
   });
 
   it("list_runs 命令应返回工作流运行记录", async () => {
-    await injectCommand("list_runs", { owner: "test-user", repo: "my-repo" });
+    const result = await injectCommand("list_runs", { owner: "test-user", repo: "my-repo" });
 
-    await waitFor(async () => {
-      const msgs = await getMessages();
-      return msgs.length > 0;
-    }, 5000);
-
-    const msgs = await getMessages();
-    expect(msgs.length).toBe(1);
-    expect(msgs[0].content).toContain("工作流运行记录");
-    expect(msgs[0].content).toContain("CI");
+    expect(result.app_response.reply).toBeDefined();
+    expect(result.app_response.reply).toContain("工作流运行记录");
+    expect(result.app_response.reply).toContain("CI");
   });
 });

@@ -2,7 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { generatePKCE } from "../utils/crypto.js";
 import type { Config } from "../config.js";
 import type { Store } from "../store.js";
-import type { OAuthExchangeResult } from "./types.js";
+import type { OAuthExchangeResult, ToolDefinition } from "./types.js";
+import { HubClient } from "./client.js";
 
 /** PKCE 缓存条目 */
 interface PKCEEntry {
@@ -86,6 +87,7 @@ export async function handleOAuthRedirect(
   res: ServerResponse,
   config: Config,
   store: Store,
+  tools?: ToolDefinition[],
 ): Promise<void> {
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
   const params = url.searchParams;
@@ -145,6 +147,14 @@ export async function handleOAuthRedirect(
     });
 
     console.log("[oauth] 安装成功, installation_id:", result.installation_id);
+
+    // OAuth 成功后同步工具定义到 Hub
+    if (tools && tools.length > 0) {
+      const hubClient = new HubClient(config.hubUrl, result.app_token);
+      hubClient.syncTools(tools).catch((err) => {
+        console.error("[oauth] 同步工具定义失败:", err);
+      });
+    }
 
     // 返回成功页面
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });

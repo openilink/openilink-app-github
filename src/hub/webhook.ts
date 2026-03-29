@@ -2,6 +2,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { verifySignature } from "../utils/crypto.js";
 import type { Store } from "../store.js";
 import type { HubEvent, Installation } from "./types.js";
+import type { HubClient } from "./client.js";
+
+/** 同步响应截止时间（毫秒） */
+const SYNC_DEADLINE_MS = 2500;
+
+/** 超时哨兵，用于区分 onCommand 返回 null 和真正超时 */
+const TIMEOUT_SENTINEL = Symbol("timeout");
 
 /**
  * 从请求流中读取完整的 body
@@ -15,11 +22,23 @@ export function readBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
-/** 事件回调函数类型 */
-export type EventCallback = (
+/** command 事件处理回调（返回结果文本） */
+export type CommandHandler = (
   event: HubEvent,
   installation: Installation,
-) => Promise<void> | void;
+) => Promise<string | null>;
+
+/** 获取 HubClient 实例的工厂函数 */
+export type HubClientFactory = (installation: Installation) => HubClient;
+
+/** Webhook 处理器配置 */
+export interface WebhookOptions {
+  store: Store;
+  /** command 事件回调，返回工具执行结果 */
+  onCommand: CommandHandler;
+  /** 获取 HubClient 工厂，用于超时后异步回复 */
+  getHubClient: HubClientFactory;
+}
 
 /**
  * 处理 Hub Webhook 请求
@@ -28,13 +47,12 @@ export type EventCallback = (
  * 1. 读取并解析 body 为 HubEvent
  * 2. url_verification 类型直接返回 challenge
  * 3. 查找对应 installation，验证签名
- * 4. 验证通过后调用 onEvent 回调
+ * 4. command 事件使用 SYNC_DEADLINE 做同步/异步超时控制
  */
 export async function handleWebhook(
   req: IncomingMessage,
   res: ServerResponse,
-  store: Store,
-  onEvent: EventCallback,
+  opts: WebhookOptions,
 ): Promise<void> {
   try {
     // 读取请求体
@@ -64,7 +82,7 @@ export async function handleWebhook(
       return;
     }
 
-    const installation = store.getInstallation(installationId);
+    const installation = opts.store.getInstallation(installationId);
     if (!installation) {
       console.warn("[webhook] 未找到安装记录:", installationId);
       res.writeHead(404, { "Content-Type": "application/json" });
@@ -96,11 +114,49 @@ export async function handleWebhook(
       return;
     }
 
-    // 签名验证通过，调用事件回调
-    try {
-      await onEvent(event, installation);
-    } catch (err) {
-      console.error("[webhook] 事件处理异常:", err);
+    // 分发业务事件
+    if (event.event) {
+      const eventType = event.event.type;
+
+      if (eventType === "command") {
+        // command 事件：Promise.race 2500ms 同步/异步超时处理
+        const resultPromise = opts.onCommand(event, installation);
+        const timeoutPromise = new Promise<typeof TIMEOUT_SENTINEL>((resolve) =>
+          setTimeout(() => resolve(TIMEOUT_SENTINEL), SYNC_DEADLINE_MS),
+        );
+        const raceResult = await Promise.race([resultPromise, timeoutPromise]);
+
+        if (raceResult !== TIMEOUT_SENTINEL) {
+          // 在截止时间内拿到结果，同步返回
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ reply: raceResult }));
+          return;
+        }
+
+        // 超时，先返回 reply_async，再异步推送结果
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ reply_async: true }));
+
+        const hubClient = opts.getHubClient(installation);
+        resultPromise
+          .then(async (asyncResult) => {
+            if (asyncResult) {
+              const userId =
+                (event.event?.data?.user_id as string) ??
+                (event.event?.data?.from as string) ??
+                "";
+              if (userId) {
+                try {
+                  await hubClient.sendText(userId, asyncResult, event.trace_id);
+                } catch (err) {
+                  console.error("[webhook] 异步推送 command 结果失败:", err);
+                }
+              }
+            }
+          })
+          .catch((err) => console.error("[webhook] 异步推送 command 结果失败:", err));
+        return;
+      }
     }
 
     // 返回成功

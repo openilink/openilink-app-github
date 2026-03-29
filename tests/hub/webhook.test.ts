@@ -6,8 +6,9 @@ import { describe, it, expect, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { handleWebhook, type EventCallback } from "../../src/hub/webhook.js";
+import { handleWebhook, type CommandHandler } from "../../src/hub/webhook.js";
 import type { Installation } from "../../src/hub/types.js";
+import type { HubClient } from "../../src/hub/client.js";
 
 /**
  * 创建模拟的 IncomingMessage
@@ -53,6 +54,15 @@ function createMockStore(installation?: Installation) {
   } as any;
 }
 
+/** 创建模拟的 HubClient */
+function createMockHubClient() {
+  return {
+    sendText: vi.fn().mockResolvedValue(undefined),
+    syncTools: vi.fn().mockResolvedValue(undefined),
+    sendMessage: vi.fn().mockResolvedValue(undefined),
+  } as unknown as HubClient;
+}
+
 /** 计算正确签名 */
 function computeSignature(secret: string, timestamp: string, body: Buffer): string {
   const mac = createHmac("sha256", secret);
@@ -82,14 +92,18 @@ describe("handleWebhook", () => {
       const req = createMockReq(body);
       const res = createMockRes();
       const store = createMockStore();
-      const onEvent = vi.fn();
+      const onCommand = vi.fn();
 
-      await handleWebhook(req, res, store, onEvent);
+      await handleWebhook(req, res, {
+        store,
+        onCommand,
+        getHubClient: () => createMockHubClient(),
+      });
 
       expect(res._statusCode).toBe(200);
       const parsed = JSON.parse(res._body);
       expect(parsed.challenge).toBe("test-challenge-string");
-      expect(onEvent).not.toHaveBeenCalled();
+      expect(onCommand).not.toHaveBeenCalled();
     });
   });
 
@@ -114,13 +128,17 @@ describe("handleWebhook", () => {
       });
       const res = createMockRes();
       const store = createMockStore(testInstallation);
-      const onEvent: EventCallback = vi.fn();
+      const onCommand: CommandHandler = vi.fn().mockResolvedValue("ok");
 
-      await handleWebhook(req, res, store, onEvent);
+      await handleWebhook(req, res, {
+        store,
+        onCommand,
+        getHubClient: () => createMockHubClient(),
+      });
 
       expect(res._statusCode).toBe(200);
-      expect(onEvent).toHaveBeenCalledOnce();
-      const [receivedEvent, receivedInst] = (onEvent as any).mock.calls[0];
+      expect(onCommand).toHaveBeenCalledOnce();
+      const [receivedEvent, receivedInst] = (onCommand as any).mock.calls[0];
       expect(receivedEvent.installation_id).toBe("inst-001");
       expect(receivedInst.id).toBe("inst-001");
     });
@@ -142,12 +160,16 @@ describe("handleWebhook", () => {
       });
       const res = createMockRes();
       const store = createMockStore(testInstallation);
-      const onEvent = vi.fn();
+      const onCommand = vi.fn();
 
-      await handleWebhook(req, res, store, onEvent);
+      await handleWebhook(req, res, {
+        store,
+        onCommand,
+        getHubClient: () => createMockHubClient(),
+      });
 
       expect(res._statusCode).toBe(401);
-      expect(onEvent).not.toHaveBeenCalled();
+      expect(onCommand).not.toHaveBeenCalled();
     });
 
     it("缺少签名头时应返回 401", async () => {
@@ -164,12 +186,16 @@ describe("handleWebhook", () => {
       const req = createMockReq(bodyStr);
       const res = createMockRes();
       const store = createMockStore(testInstallation);
-      const onEvent = vi.fn();
+      const onCommand = vi.fn();
 
-      await handleWebhook(req, res, store, onEvent);
+      await handleWebhook(req, res, {
+        store,
+        onCommand,
+        getHubClient: () => createMockHubClient(),
+      });
 
       expect(res._statusCode).toBe(401);
-      expect(onEvent).not.toHaveBeenCalled();
+      expect(onCommand).not.toHaveBeenCalled();
     });
   });
 
@@ -191,14 +217,18 @@ describe("handleWebhook", () => {
       });
       const res = createMockRes();
       const store = createMockStore(undefined);
-      const onEvent = vi.fn();
+      const onCommand = vi.fn();
 
-      await handleWebhook(req, res, store, onEvent);
+      await handleWebhook(req, res, {
+        store,
+        onCommand,
+        getHubClient: () => createMockHubClient(),
+      });
 
       expect(res._statusCode).toBe(404);
       const parsed = JSON.parse(res._body);
       expect(parsed.error).toContain("安装记录不存在");
-      expect(onEvent).not.toHaveBeenCalled();
+      expect(onCommand).not.toHaveBeenCalled();
     });
 
     it("缺少 installation_id 时应返回 400", async () => {
@@ -218,9 +248,13 @@ describe("handleWebhook", () => {
       });
       const res = createMockRes();
       const store = createMockStore();
-      const onEvent = vi.fn();
+      const onCommand = vi.fn();
 
-      await handleWebhook(req, res, store, onEvent);
+      await handleWebhook(req, res, {
+        store,
+        onCommand,
+        getHubClient: () => createMockHubClient(),
+      });
 
       expect(res._statusCode).toBe(400);
     });
@@ -231,9 +265,13 @@ describe("handleWebhook", () => {
       const req = createMockReq("not-valid-json{{{");
       const res = createMockRes();
       const store = createMockStore();
-      const onEvent = vi.fn();
+      const onCommand = vi.fn();
 
-      await handleWebhook(req, res, store, onEvent);
+      await handleWebhook(req, res, {
+        store,
+        onCommand,
+        getHubClient: () => createMockHubClient(),
+      });
 
       expect(res._statusCode).toBe(400);
       const parsed = JSON.parse(res._body);

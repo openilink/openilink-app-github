@@ -11,6 +11,7 @@ import { handleWebhook } from "./hub/webhook.js";
 import { handleOAuthSetup, handleOAuthRedirect } from "./hub/oauth.js";
 import { getManifest } from "./hub/manifest.js";
 import { collectAllTools } from "./tools/index.js";
+import type { HubEvent, Installation } from "./hub/types.js";
 
 /** 解析请求 URL 的路径和方法 */
 function parseRequest(req: http.IncomingMessage): { method: string; pathname: string } {
@@ -39,6 +40,22 @@ async function main(): Promise<void> {
   // 5. 初始化路由器
   const router = new Router(handlers);
 
+  /** 获取 HubClient 实例（用于异步回复等场景） */
+  function getHubClient(installation: Installation): HubClient {
+    return new HubClient(installation.hubUrl, installation.appToken);
+  }
+
+  /**
+   * 处理 command 事件（同步/异步超时由 webhook 层控制）
+   * 返回工具执行结果文本，null 表示无需回复
+   */
+  async function onCommand(event: HubEvent, installation: Installation): Promise<string | null> {
+    if (!event.event) return null;
+    const hubClient = getHubClient(installation);
+    const result = await router.handleCommand(event, installation, hubClient);
+    return result;
+  }
+
   // 6. 创建 HTTP 服务器
   const server = http.createServer(async (req, res) => {
     const { method, pathname } = parseRequest(req);
@@ -46,29 +63,7 @@ async function main(): Promise<void> {
     try {
       // POST /hub/webhook - Hub 事件推送
       if (method === "POST" && pathname === "/hub/webhook") {
-        await handleWebhook(req, res, store, async (event, installation) => {
-          if (!event.event) return;
-
-          const eventType = event.event.type;
-
-          if (eventType === "command") {
-            // 命令事件 - 路由到 tool handler
-            const hubClient = new HubClient(installation.hubUrl, installation.appToken);
-            const result = await router.handleCommand(event, installation, hubClient);
-
-            if (result) {
-              // 将结果通过 Hub 回复给用户
-              const userId = event.event.data.user_id ?? event.event.data.from ?? "";
-              if (userId) {
-                try {
-                  await hubClient.sendText(userId, result, event.trace_id);
-                } catch (err) {
-                  console.error("[main] 回复命令结果失败:", err);
-                }
-              }
-            }
-          }
-        });
+        await handleWebhook(req, res, { store, onCommand, getHubClient });
         return;
       }
 
@@ -80,7 +75,7 @@ async function main(): Promise<void> {
 
       // GET /oauth/redirect - OAuth 回调
       if (method === "GET" && pathname === "/oauth/redirect") {
-        await handleOAuthRedirect(req, res, config, store);
+        await handleOAuthRedirect(req, res, config, store, definitions);
         return;
       }
 
@@ -117,6 +112,18 @@ async function main(): Promise<void> {
     console.log(`[main] HTTP 服务器已启动，监听端口 ${port}`);
     console.log(`[main] Manifest: http://localhost:${port}/manifest.json`);
     console.log(`[main] Health: http://localhost:${port}/health`);
+
+    // 启动时同步工具定义到所有已安装的 Hub 实例
+    const installations = store.getAllInstallations();
+    for (const inst of installations) {
+      const hubClient = new HubClient(inst.hubUrl, inst.appToken);
+      hubClient.syncTools(definitions).catch((err) => {
+        console.error(`[main] 启动同步工具失败 (installation=${inst.id}):`, err);
+      });
+    }
+    if (installations.length > 0) {
+      console.log(`[main] 正在向 ${installations.length} 个安装实例同步工具定义`);
+    }
   });
 
   // 8. 优雅关闭

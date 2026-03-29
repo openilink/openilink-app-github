@@ -52,14 +52,24 @@ export function startMockHub(): Promise<{
 }
 
 /**
+ * 注入命令事件返回值
+ * app_response 为 App webhook 的同步 JSON 响应（解析后）
+ */
+export interface InjectResult {
+  ok: boolean;
+  app_response: any;
+}
+
+/**
  * 注入模拟命令事件到 Mock Server
  * Mock Server 会将该命令作为 Hub 事件推送给 App 的 webhook
+ * 返回 App 的同步响应（可能是 { reply: "..." } 或 { reply_async: true }）
  */
 export async function injectCommand(
   command: string,
   args: Record<string, any> = {},
   userId = "test-user",
-): Promise<void> {
+): Promise<InjectResult> {
   const res = await fetch(`${MOCK_HUB_URL}/mock/command`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -68,6 +78,17 @@ export async function injectCommand(
   if (!res.ok) {
     throw new Error(`注入命令失败: ${res.status} ${await res.text()}`);
   }
+  const data = await res.json();
+  // app_response 是字符串形式的 JSON，需要再解析一次
+  let appResponse: any;
+  try {
+    appResponse = typeof data.app_response === "string"
+      ? JSON.parse(data.app_response)
+      : data.app_response;
+  } catch {
+    appResponse = data.app_response;
+  }
+  return { ok: data.ok, app_response: appResponse };
 }
 
 /**
