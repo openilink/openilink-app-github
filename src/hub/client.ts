@@ -22,7 +22,7 @@ export class HubClient {
     const url = `${this.hubUrl}/bot/v1/message/send`;
 
     const payload: Record<string, string> = {
-      user_id: to,
+      to: to,
       type: "text",
       content: text,
     };

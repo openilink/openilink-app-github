@@ -47,11 +47,12 @@ export class Router {
       return `未知命令: ${command}`;
     }
 
-    // 构建 ToolContext
+    // 构建 ToolContext，优先使用 sender.id
+    const sender = (data as any).sender;
     const ctx: ToolContext = {
       installationId: installation.id,
       botId: event.bot.id,
-      userId: data.user_id ?? data.from ?? "",
+      userId: (sender?.id ?? (data as any).user_id ?? (data as any).from ?? "") as string,
       traceId: event.trace_id,
       args,
     };
