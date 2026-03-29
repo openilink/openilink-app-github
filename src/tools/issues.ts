@@ -94,6 +94,56 @@ const definitions: ToolDefinition[] = [
       required: ["owner", "repo", "issue_number", "body"],
     },
   },
+  {
+    name: "close_issue",
+    description: "关闭 Issue",
+    command: "close_issue",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+        issue_number: { type: "number", description: "Issue 编号" },
+      },
+      required: ["owner", "repo", "issue_number"],
+    },
+  },
+  {
+    name: "assign_issue",
+    description: "分配 Issue 给指定用户",
+    command: "assign_issue",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+        issue_number: { type: "number", description: "Issue 编号" },
+        assignees: {
+          type: "string",
+          description: "指派人，逗号分隔",
+        },
+      },
+      required: ["owner", "repo", "issue_number", "assignees"],
+    },
+  },
+  {
+    name: "add_labels",
+    description: "为 Issue 添加标签",
+    command: "add_labels",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+        issue_number: { type: "number", description: "Issue 编号" },
+        labels: {
+          type: "string",
+          description: "标签名，逗号分隔",
+        },
+      },
+      required: ["owner", "repo", "issue_number", "labels"],
+    },
+  },
 ];
 
 /** 创建 Issue 模块的 handler 映射 */
@@ -256,6 +306,86 @@ function createHandlers(octokit: Octokit): Map<string, ToolHandler> {
       return `评论添加成功!\nIssue #${issueNumber}\n评论 ID: ${res.data.id}\n地址: ${res.data.html_url}`;
     } catch (err: any) {
       return `添加评论失败: ${err.message ?? err}`;
+    }
+  });
+
+  // 关闭 Issue
+  handlers.set("close_issue", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+    const issueNumber: number = ctx.args.issue_number ?? 0;
+
+    try {
+      const res = await octokit.rest.issues.update({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        state: "closed",
+      });
+
+      const issue = res.data;
+      return `Issue #${issue.number} 已关闭!\n标题: ${issue.title}`;
+    } catch (err: any) {
+      return `关闭 Issue 失败: ${err.message ?? err}`;
+    }
+  });
+
+  // 分配 Issue
+  handlers.set("assign_issue", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+    const issueNumber: number = ctx.args.issue_number ?? 0;
+    const assigneesRaw: string = ctx.args.assignees ?? "";
+
+    try {
+      const assignees = assigneesRaw
+        .split(",")
+        .map((a: string) => a.trim())
+        .filter(Boolean);
+
+      const res = await octokit.rest.issues.addAssignees({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        assignees,
+      });
+
+      const issue = res.data;
+      const currentAssignees = issue.assignees
+        ?.map((a) => a.login)
+        .join(", ") ?? "无";
+      return `Issue #${issue.number} 指派成功!\n当前指派人: ${currentAssignees}`;
+    } catch (err: any) {
+      return `分配 Issue 失败: ${err.message ?? err}`;
+    }
+  });
+
+  // 添加标签
+  handlers.set("add_labels", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+    const issueNumber: number = ctx.args.issue_number ?? 0;
+    const labelsRaw: string = ctx.args.labels ?? "";
+
+    try {
+      const labels = labelsRaw
+        .split(",")
+        .map((l: string) => l.trim())
+        .filter(Boolean);
+
+      const res = await octokit.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        labels,
+      });
+
+      const currentLabels = res.data
+        .map((l) => l.name)
+        .join(", ");
+      return `Issue #${issueNumber} 标签添加成功!\n当前标签: ${currentLabels}`;
+    } catch (err: any) {
+      return `添加标签失败: ${err.message ?? err}`;
     }
   });
 

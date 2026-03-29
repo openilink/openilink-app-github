@@ -71,6 +71,18 @@ function createMockOctokit() {
             html_url: "https://github.com/user/repo/issues/1#issuecomment-12345",
           },
         }),
+        addAssignees: vi.fn().mockResolvedValue({
+          data: {
+            number: 1,
+            assignees: [{ login: "bob" }, { login: "charlie" }],
+          },
+        }),
+        addLabels: vi.fn().mockResolvedValue({
+          data: [
+            { name: "bug" },
+            { name: "enhancement" },
+          ],
+        }),
       },
     },
   } as any;
@@ -89,9 +101,9 @@ function makeCtx(args: Record<string, any>): ToolContext {
 
 describe("issuesTools", () => {
   describe("tool definitions 结构", () => {
-    it("应包含 5 个 Issue 相关工具定义", () => {
+    it("应包含 8 个 Issue 相关工具定义", () => {
       const { definitions } = issuesTools;
-      expect(definitions).toHaveLength(5);
+      expect(definitions).toHaveLength(8);
 
       const names = definitions.map((d) => d.name);
       expect(names).toContain("list_issues");
@@ -99,6 +111,9 @@ describe("issuesTools", () => {
       expect(names).toContain("get_issue");
       expect(names).toContain("update_issue");
       expect(names).toContain("add_comment");
+      expect(names).toContain("close_issue");
+      expect(names).toContain("assign_issue");
+      expect(names).toContain("add_labels");
     });
 
     it("create_issue 应要求 owner, repo, title 为必填", () => {
@@ -225,6 +240,72 @@ describe("issuesTools", () => {
         expect(octokit.rest.issues.createComment).toHaveBeenCalledOnce();
         expect(result).toContain("评论添加成功");
         expect(result).toContain("12345");
+      });
+    });
+
+    describe("close_issue", () => {
+      it("应成功关闭 Issue", async () => {
+        const handler = handlers.get("close_issue")!;
+        const result = await handler(makeCtx({
+          owner: "user",
+          repo: "repo",
+          issue_number: 1,
+        }));
+
+        expect(octokit.rest.issues.update).toHaveBeenCalled();
+        const callArgs = octokit.rest.issues.update.mock.calls[0][0];
+        expect(callArgs.state).toBe("closed");
+        expect(result).toContain("已关闭");
+      });
+
+      it("API 出错时应返回错误消息", async () => {
+        octokit.rest.issues.update.mockRejectedValueOnce(new Error("Not Found"));
+
+        const handler = handlers.get("close_issue")!;
+        const result = await handler(makeCtx({
+          owner: "user",
+          repo: "repo",
+          issue_number: 999,
+        }));
+        expect(result).toContain("关闭 Issue 失败");
+      });
+    });
+
+    describe("assign_issue", () => {
+      it("应成功分配 Issue", async () => {
+        const handler = handlers.get("assign_issue")!;
+        const result = await handler(makeCtx({
+          owner: "user",
+          repo: "repo",
+          issue_number: 1,
+          assignees: "bob, charlie",
+        }));
+
+        expect(octokit.rest.issues.addAssignees).toHaveBeenCalledOnce();
+        const callArgs = octokit.rest.issues.addAssignees.mock.calls[0][0];
+        expect(callArgs.assignees).toEqual(["bob", "charlie"]);
+        expect(result).toContain("指派成功");
+        expect(result).toContain("bob");
+        expect(result).toContain("charlie");
+      });
+    });
+
+    describe("add_labels", () => {
+      it("应成功添加标签", async () => {
+        const handler = handlers.get("add_labels")!;
+        const result = await handler(makeCtx({
+          owner: "user",
+          repo: "repo",
+          issue_number: 1,
+          labels: "bug, enhancement",
+        }));
+
+        expect(octokit.rest.issues.addLabels).toHaveBeenCalledOnce();
+        const callArgs = octokit.rest.issues.addLabels.mock.calls[0][0];
+        expect(callArgs.labels).toEqual(["bug", "enhancement"]);
+        expect(result).toContain("标签添加成功");
+        expect(result).toContain("bug");
+        expect(result).toContain("enhancement");
       });
     });
   });

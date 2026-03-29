@@ -75,6 +75,53 @@ const definitions: ToolDefinition[] = [
       required: ["owner", "repo", "pull_number"],
     },
   },
+  {
+    name: "review_pull",
+    description: "审核 Pull Request",
+    command: "review_pull",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+        pull_number: { type: "number", description: "PR 编号" },
+        event: {
+          type: "string",
+          description: '审核动作: "APPROVE"、"COMMENT"、"REQUEST_CHANGES"',
+        },
+        body: { type: "string", description: "审核评论（可选）" },
+      },
+      required: ["owner", "repo", "pull_number", "event"],
+    },
+  },
+  {
+    name: "list_pull_files",
+    description: "获取 Pull Request 的文件变更列表",
+    command: "list_pull_files",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+        pull_number: { type: "number", description: "PR 编号" },
+      },
+      required: ["owner", "repo", "pull_number"],
+    },
+  },
+  {
+    name: "close_pull",
+    description: "关闭 Pull Request",
+    command: "close_pull",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+        pull_number: { type: "number", description: "PR 编号" },
+      },
+      required: ["owner", "repo", "pull_number"],
+    },
+  },
 ];
 
 /** 创建 PR 模块的 handler 映射 */
@@ -207,6 +254,79 @@ function createHandlers(octokit: Octokit): Map<string, ToolHandler> {
       }
     } catch (err: any) {
       return `合并 PR 失败: ${err.message ?? err}`;
+    }
+  });
+
+  // 审核 PR
+  handlers.set("review_pull", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+    const pullNumber: number = ctx.args.pull_number ?? 0;
+    const event = (ctx.args.event as string) ?? "COMMENT";
+    const body: string = ctx.args.body ?? "";
+
+    try {
+      const res = await octokit.rest.pulls.createReview({
+        owner,
+        repo,
+        pull_number: pullNumber,
+        event: event as "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
+        body: body || undefined,
+      });
+
+      const review = res.data;
+      return `PR #${pullNumber} 审核提交成功!\n审核 ID: ${review.id}\n动作: ${event}\n状态: ${review.state}`;
+    } catch (err: any) {
+      return `审核 PR 失败: ${err.message ?? err}`;
+    }
+  });
+
+  // 获取 PR 文件列表
+  handlers.set("list_pull_files", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+    const pullNumber: number = ctx.args.pull_number ?? 0;
+
+    try {
+      const res = await octokit.rest.pulls.listFiles({
+        owner,
+        repo,
+        pull_number: pullNumber,
+      });
+
+      const files = res.data;
+      if (files.length === 0) {
+        return `PR #${pullNumber} 暂无文件变更`;
+      }
+
+      const lines = files.map((f, i) => {
+        return `${i + 1}. ${f.status} ${f.filename} (+${f.additions} -${f.deletions})`;
+      });
+
+      return `PR #${pullNumber} 文件变更（共 ${files.length} 个）:\n${lines.join("\n")}`;
+    } catch (err: any) {
+      return `获取 PR 文件列表失败: ${err.message ?? err}`;
+    }
+  });
+
+  // 关闭 PR
+  handlers.set("close_pull", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+    const pullNumber: number = ctx.args.pull_number ?? 0;
+
+    try {
+      const res = await octokit.rest.pulls.update({
+        owner,
+        repo,
+        pull_number: pullNumber,
+        state: "closed",
+      });
+
+      const pr = res.data;
+      return `PR #${pr.number} 已关闭!\n标题: ${pr.title}`;
+    } catch (err: any) {
+      return `关闭 PR 失败: ${err.message ?? err}`;
     }
   });
 

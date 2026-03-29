@@ -49,6 +49,27 @@ function createMockOctokit() {
             html_url: "https://github.com/user/new-repo",
           },
         }),
+        createFork: vi.fn().mockResolvedValue({
+          data: {
+            full_name: "me/repo1",
+            html_url: "https://github.com/me/repo1",
+          },
+        }),
+        getReadme: vi.fn().mockResolvedValue({
+          data: {
+            content: Buffer.from("# Hello World\n这是 README").toString("base64"),
+            encoding: "base64",
+          },
+        }),
+        getContent: vi.fn().mockResolvedValue({
+          data: {
+            content: Buffer.from("export default {}").toString("base64"),
+            encoding: "base64",
+          },
+        }),
+      },
+      activity: {
+        starRepoForAuthenticatedUser: vi.fn().mockResolvedValue({}),
       },
       search: {
         repos: vi.fn().mockResolvedValue({
@@ -82,15 +103,19 @@ function makeCtx(args: Record<string, any>): ToolContext {
 
 describe("reposTools", () => {
   describe("tool definitions 结构", () => {
-    it("应包含 4 个仓库相关工具定义", () => {
+    it("应包含 8 个仓库相关工具定义", () => {
       const { definitions } = reposTools;
-      expect(definitions).toHaveLength(4);
+      expect(definitions).toHaveLength(8);
 
       const names = definitions.map((d) => d.name);
       expect(names).toContain("list_repos");
       expect(names).toContain("get_repo");
       expect(names).toContain("search_repos");
       expect(names).toContain("create_repo");
+      expect(names).toContain("fork_repo");
+      expect(names).toContain("star_repo");
+      expect(names).toContain("get_readme");
+      expect(names).toContain("get_file_content");
     });
 
     it("每个定义应包含 name, description, command 字段", () => {
@@ -210,6 +235,89 @@ describe("reposTools", () => {
         expect(octokit.rest.repos.createForAuthenticatedUser).toHaveBeenCalledOnce();
         expect(result).toContain("创建成功");
         expect(result).toContain("user/new-repo");
+      });
+    });
+
+    describe("fork_repo", () => {
+      it("应成功 Fork 仓库", async () => {
+        const handler = handlers.get("fork_repo")!;
+        const result = await handler(makeCtx({ owner: "user", repo: "repo1" }));
+
+        expect(octokit.rest.repos.createFork).toHaveBeenCalledOnce();
+        expect(result).toContain("Fork 成功");
+        expect(result).toContain("me/repo1");
+      });
+
+      it("API 出错时应返回错误消息", async () => {
+        octokit.rest.repos.createFork.mockRejectedValueOnce(new Error("Forbidden"));
+
+        const handler = handlers.get("fork_repo")!;
+        const result = await handler(makeCtx({ owner: "user", repo: "repo1" }));
+        expect(result).toContain("Fork 仓库失败");
+      });
+    });
+
+    describe("star_repo", () => {
+      it("应成功 Star 仓库", async () => {
+        const handler = handlers.get("star_repo")!;
+        const result = await handler(makeCtx({ owner: "user", repo: "repo1" }));
+
+        expect(octokit.rest.activity.starRepoForAuthenticatedUser).toHaveBeenCalledOnce();
+        expect(result).toContain("Star");
+        expect(result).toContain("user/repo1");
+      });
+    });
+
+    describe("get_readme", () => {
+      it("应返回解码后的 README 内容", async () => {
+        const handler = handlers.get("get_readme")!;
+        const result = await handler(makeCtx({ owner: "user", repo: "repo1" }));
+
+        expect(octokit.rest.repos.getReadme).toHaveBeenCalledOnce();
+        expect(result).toContain("README");
+        expect(result).toContain("Hello World");
+      });
+
+      it("API 出错时应返回错误消息", async () => {
+        octokit.rest.repos.getReadme.mockRejectedValueOnce(new Error("Not Found"));
+
+        const handler = handlers.get("get_readme")!;
+        const result = await handler(makeCtx({ owner: "user", repo: "no-readme" }));
+        expect(result).toContain("获取 README 失败");
+      });
+    });
+
+    describe("get_file_content", () => {
+      it("应返回解码后的文件内容", async () => {
+        const handler = handlers.get("get_file_content")!;
+        const result = await handler(makeCtx({
+          owner: "user",
+          repo: "repo1",
+          path: "src/index.ts",
+        }));
+
+        expect(octokit.rest.repos.getContent).toHaveBeenCalledOnce();
+        expect(result).toContain("文件内容");
+        expect(result).toContain("export default");
+      });
+
+      it("目录时应返回目录列表", async () => {
+        octokit.rest.repos.getContent.mockResolvedValueOnce({
+          data: [
+            { name: "src", type: "dir" },
+            { name: "package.json", type: "file" },
+          ],
+        });
+
+        const handler = handlers.get("get_file_content")!;
+        const result = await handler(makeCtx({
+          owner: "user",
+          repo: "repo1",
+          path: "",
+        }));
+        expect(result).toContain("目录内容");
+        expect(result).toContain("src");
+        expect(result).toContain("package.json");
       });
     });
   });

@@ -16,6 +16,9 @@ import { reposTools } from "./repos.js";
 import { issuesTools } from "./issues.js";
 import { pullsTools } from "./pulls.js";
 import { actionsTools } from "./actions.js";
+import { releasesTools } from "./releases.js";
+import { gistsTools } from "./gists.js";
+import { notificationsTools } from "./notifications.js";
 
 /** 所有 tool 模块列表 */
 const modules: ToolModule[] = [
@@ -23,6 +26,9 @@ const modules: ToolModule[] = [
   issuesTools,
   pullsTools,
   actionsTools,
+  releasesTools,
+  gistsTools,
+  notificationsTools,
 ];
 
 /**

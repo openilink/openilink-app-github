@@ -66,6 +66,60 @@ const definitions: ToolDefinition[] = [
       required: ["name"],
     },
   },
+  {
+    name: "fork_repo",
+    description: "Fork 一个 GitHub 仓库",
+    command: "fork_repo",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+      },
+      required: ["owner", "repo"],
+    },
+  },
+  {
+    name: "star_repo",
+    description: "Star 一个 GitHub 仓库",
+    command: "star_repo",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+      },
+      required: ["owner", "repo"],
+    },
+  },
+  {
+    name: "get_readme",
+    description: "获取仓库的 README 内容",
+    command: "get_readme",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+      },
+      required: ["owner", "repo"],
+    },
+  },
+  {
+    name: "get_file_content",
+    description: "获取仓库中指定文件的内容",
+    command: "get_file_content",
+    parameters: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "仓库所有者" },
+        repo: { type: "string", description: "仓库名称" },
+        path: { type: "string", description: "文件路径" },
+        ref: { type: "string", description: "分支名或 Commit SHA（可选）" },
+      },
+      required: ["owner", "repo", "path"],
+    },
+  },
 ];
 
 /** 创建仓库模块的 handler 映射 */
@@ -175,6 +229,105 @@ function createHandlers(octokit: Octokit): Map<string, ToolHandler> {
       return `仓库创建成功!\n名称: ${r.full_name}\n地址: ${r.html_url}\n可见性: ${r.private ? "私有" : "公开"}`;
     } catch (err: any) {
       return `创建仓库失败: ${err.message ?? err}`;
+    }
+  });
+
+  // Fork 仓库
+  handlers.set("fork_repo", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+
+    try {
+      const res = await octokit.rest.repos.createFork({
+        owner,
+        repo,
+      });
+
+      const r = res.data;
+      return `Fork 成功!\n名称: ${r.full_name}\n地址: ${r.html_url}`;
+    } catch (err: any) {
+      return `Fork 仓库失败: ${err.message ?? err}`;
+    }
+  });
+
+  // Star 仓库
+  handlers.set("star_repo", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+
+    try {
+      await octokit.rest.activity.starRepoForAuthenticatedUser({
+        owner,
+        repo,
+      });
+
+      return `已成功 Star ${owner}/${repo}!`;
+    } catch (err: any) {
+      return `Star 仓库失败: ${err.message ?? err}`;
+    }
+  });
+
+  // 获取 README
+  handlers.set("get_readme", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+
+    try {
+      const res = await octokit.rest.repos.getReadme({
+        owner,
+        repo,
+      });
+
+      const data = res.data as any;
+      // 解码 base64 内容
+      const content = Buffer.from(data.content, "base64").toString("utf-8");
+
+      // 截取前 2000 字符避免过长
+      const preview = content.length > 2000
+        ? content.slice(0, 2000) + "\n...(内容已截断)"
+        : content;
+
+      return `README（${owner}/${repo}）:\n\n${preview}`;
+    } catch (err: any) {
+      return `获取 README 失败: ${err.message ?? err}`;
+    }
+  });
+
+  // 获取文件内容
+  handlers.set("get_file_content", async (ctx) => {
+    const owner: string = ctx.args.owner ?? "";
+    const repo: string = ctx.args.repo ?? "";
+    const path: string = ctx.args.path ?? "";
+    const ref: string | undefined = ctx.args.ref ?? undefined;
+
+    try {
+      const res = await octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path,
+        ref,
+      });
+
+      const data = res.data as any;
+      if (Array.isArray(data)) {
+        // 目录
+        const lines = data.map((item: any, i: number) => {
+          return `${i + 1}. ${item.type === "dir" ? "📁" : "📄"} ${item.name}`;
+        });
+        return `目录内容（${owner}/${repo}/${path}）:\n${lines.join("\n")}`;
+      }
+
+      // 文件：解码 base64 内容
+      const content = Buffer.from(data.content, "base64").toString("utf-8");
+
+      // 截取前 2000 字符避免过长
+      const preview = content.length > 2000
+        ? content.slice(0, 2000) + "\n...(内容已截断)"
+        : content;
+
+      return `文件内容（${owner}/${repo}/${path}）:\n\n${preview}`;
+    } catch (err: any) {
+      return `获取文件内容失败: ${err.message ?? err}`;
     }
   });
 
