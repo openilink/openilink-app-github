@@ -1,3 +1,16 @@
+/**
+ * Webhook 事件接收与分发
+ *
+ * 负责：
+ * 1. 接收 Hub 推送的 HTTP POST 请求
+ * 2. 处理 url_verification 握手（在签名验证前）
+ * 3. 验证 HMAC-SHA256 签名（X-Timestamp + X-Signature，sha256= 前缀）
+ * 4. 将业务事件分发给注册的回调函数
+ * 5. command 事件支持同步/异步超时响应（SYNC_DEADLINE = 2500ms）
+ *    同步回复字段：reply_type / reply_url / reply_base64 / reply_name
+ *    Promise.race 使用 Symbol 哨兵区分超时与 null 返回
+ */
+
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { verifySignature } from "../utils/crypto.js";
 import type { Store } from "../store.js";
@@ -11,7 +24,7 @@ const SYNC_DEADLINE_MS = 2500;
 const TIMEOUT_SENTINEL = Symbol("timeout");
 
 /**
- * 从请求流中读取完整的 body
+ * 从请求流中读取完整的 body（Buffer）
  */
 export function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -42,10 +55,10 @@ export interface WebhookOptions {
 
 /**
  * 处理 Hub Webhook 请求
- * 路由: POST /webhook
+ * 路由: POST /hub/webhook
  *
  * 1. 读取并解析 body 为 HubEvent
- * 2. url_verification 类型直接返回 challenge
+ * 2. url_verification 类型直接返回 challenge（无需签名验证）
  * 3. 查找对应 installation，验证签名
  * 4. command 事件使用 SYNC_DEADLINE 做同步/异步超时控制
  */
@@ -67,7 +80,7 @@ export async function handleWebhook(
       return;
     }
 
-    // URL 验证（Hub 首次注册 Webhook 时发送）
+    // url_verification 握手：在签名验证之前处理
     if (event.type === "url_verification") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ challenge: event.challenge ?? "" }));
@@ -90,7 +103,7 @@ export async function handleWebhook(
       return;
     }
 
-    // 验证签名
+    // 验证签名：X-Timestamp + X-Signature
     const timestamp = (req.headers["x-timestamp"] as string) ?? "";
     const signature = (req.headers["x-signature"] as string) ?? "";
 
@@ -128,8 +141,14 @@ export async function handleWebhook(
 
         if (raceResult !== TIMEOUT_SENTINEL) {
           // 在截止时间内拿到结果，同步返回
+          const replyBody: Record<string, string> = {
+            reply_type: "text",
+          };
+          if (typeof raceResult === "string") {
+            replyBody.reply_base64 = Buffer.from(raceResult, "utf-8").toString("base64");
+          }
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ reply: raceResult }));
+          res.end(JSON.stringify(replyBody));
           return;
         }
 
