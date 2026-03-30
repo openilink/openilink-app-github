@@ -47,12 +47,30 @@ async function main(): Promise<void> {
 
   /**
    * 处理 command 事件（同步/异步超时由 webhook 层控制）
+   * 优先从本地加密配置中读取 github_token 创建临时 Octokit 客户端
    * 返回工具执行结果文本，null 表示无需回复
    */
   async function onCommand(event: HubEvent, installation: Installation): Promise<string | null> {
     if (!event.event) return null;
+
+    /** 尝试读取本地加密配置，用其中的 github_token 创建临时客户端 */
+    const localCfg = store.getConfig(installation.id, installation.appToken);
+    let perInstallOctokit = octokit;
+    if (localCfg?.github_token) {
+      perInstallOctokit = new Octokit({ auth: localCfg.github_token });
+      console.log(`[main] 使用安装 ${installation.id} 的本地加密 github_token`);
+    }
+
+    /** 用 per-installation 客户端重新收集工具处理器 */
+    const perHandlers = perInstallOctokit === octokit
+      ? handlers
+      : collectAllTools(perInstallOctokit).handlers;
+    const perRouter = perInstallOctokit === octokit
+      ? router
+      : new Router(perHandlers);
+
     const hubClient = getHubClient(installation);
-    const result = await router.handleCommand(event, installation, hubClient);
+    const result = await perRouter.handleCommand(event, installation, hubClient);
     return result;
   }
 
@@ -98,9 +116,18 @@ async function main(): Promise<void> {
           createdAt: new Date().toISOString(),
         });
         console.log("[oauth] 模式2安装成功, installation_id:", data.installation_id);
+        // 安装后拉取配置并加密存储
+        const mode2Hub = new HubClient(data.hub_url || config.hubUrl, data.app_token);
+        mode2Hub.fetchConfig()
+          .then((remoteCfg) => {
+            if (Object.keys(remoteCfg).length > 0) {
+              store.saveConfig(data.installation_id, remoteCfg, data.app_token);
+              console.log("[main] 模式2: 已拉取并加密保存配置:", data.installation_id);
+            }
+          })
+          .catch((err) => console.error("[main] 模式2: 拉取配置失败:", err));
         // 异步同步工具定义到 Hub
-        new HubClient(data.hub_url || config.hubUrl, data.app_token)
-          .syncTools(definitions)
+        mode2Hub.syncTools(definitions)
           .catch((err) => console.error("[oauth] 模式2同步工具失败:", err));
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ webhook_url: `${config.baseUrl}/hub/webhook` }));

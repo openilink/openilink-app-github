@@ -168,12 +168,25 @@ export async function handleOAuthRedirect(
 
     console.log("[oauth] 安装成功, installation_id:", result.installation_id);
 
-    // OAuth 成功后同步工具定义到 Hub
-    if (tools && tools.length > 0) {
+    // 安装成功后拉取用户配置并加密存储到本地
+    {
       const hubClient = new HubClient(pkceEntry.hubUrl, result.app_token);
-      hubClient.syncTools(tools).catch((err) => {
-        console.error("[oauth] 同步工具定义失败:", err);
-      });
+      try {
+        const remoteConfig = await hubClient.fetchConfig();
+        if (Object.keys(remoteConfig).length > 0) {
+          store.saveConfig(result.installation_id, remoteConfig, result.app_token);
+          console.log("[oauth] 已拉取并加密保存配置:", result.installation_id);
+        }
+      } catch (err) {
+        console.error("[oauth] 拉取配置失败:", err);
+      }
+
+      // OAuth 成功后同步工具定义到 Hub
+      if (tools && tools.length > 0) {
+        hubClient.syncTools(tools).catch((err) => {
+          console.error("[oauth] 同步工具定义失败:", err);
+        });
+      }
     }
 
     // 返回成功页面

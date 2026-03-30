@@ -36,7 +36,7 @@ export function getManifest(
     description: "通过微信管理 GitHub 仓库、Issue、PR 和 Actions",
     icon: "🐙",
     events: ["command"],
-    scopes: ["tools:write"],
+    scopes: ["tools:write", "config:read"],
     tools: toolDefinitions,
     oauth_setup_url: `${baseUrl}/oauth/setup`,
     oauth_redirect_url: `${baseUrl}/oauth/redirect`,
