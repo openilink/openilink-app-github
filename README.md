@@ -1,145 +1,98 @@
-# OpeniLink GitHub App
+# @openilink/app-github
 
-通过微信操作 GitHub -- 36 个 GitHub Tools，管理 Issue / PR / Repo / Actions / Release / Gist / 通知。
+[![OpeniLink Hub](https://img.shields.io/badge/OpeniLink_Hub-安装到微信-07C160?style=for-the-badge&logo=wechat&logoColor=white)](https://github.com/openilink/openilink-hub)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)]()
 
-## 功能概览
+> 在微信里管理 GitHub -- Issue、PR、Repo、Actions、Release、Gist、通知，一句话搞定。
 
-### 仓库管理 (8 Tools)
-- `list_repos` - 列出仓库
-- `get_repo` - 获取仓库信息
-- `search_repos` - 搜索仓库
-- `create_repo` - 创建仓库
-- `fork_repo` - Fork 仓库
-- `star_repo` - Star 仓库
-- `get_readme` - 获取 README
-- `get_file_content` - 获取文件内容
+**36 个 AI Tools** | PAT 认证 5000 次/小时 | 纯工具型无状态应用
 
-### Issue 管理 (8 Tools)
-- `list_issues` - 列出 Issue
-- `create_issue` - 创建 Issue
-- `get_issue` - 获取 Issue 详情
-- `update_issue` - 更新 Issue
-- `add_comment` - 添加评论
-- `close_issue` - 关闭 Issue
-- `assign_issue` - 分配 Issue
-- `add_labels` - 添加标签
+---
 
-### PR 管理 (7 Tools)
-- `list_pulls` - 列出 PR
-- `get_pull` - 获取 PR 详情
-- `create_pull` - 创建 PR
-- `merge_pull` - 合并 PR
-- `review_pull` - 审核 PR
-- `list_pull_files` - 获取 PR 文件列表
-- `close_pull` - 关闭 PR
+## 亮点
 
-### Actions (5 Tools)
-- `list_runs` - 列出工作流运行记录
-- `get_run` - 获取运行详情
-- `trigger_workflow` - 触发工作流
-- `cancel_run` - 取消运行
-- `rerun_workflow` - 重新运行工作流
+- **36 个工具覆盖 GitHub 日常** -- 从创建 Issue 到合并 PR、触发 Actions，几乎不用打开浏览器
+- **自然语言驱动** -- 对 Bot 说「帮我创建一个 Issue 标题是修复登录 bug」即可
+- **无状态零存储** -- 请求即响应，不存储任何用户数据
+- **PAT 认证** -- GitHub Personal Access Token，免费 5000 次/小时
 
-### Release (3 Tools)
-- `list_releases` - 列出 Release
-- `get_release` - 获取 Release 详情
-- `create_release` - 创建 Release
+## 36 个 AI Tools 一览
 
-### Gist (3 Tools)
-- `list_gists` - 列出 Gist
-- `create_gist` - 创建 Gist
-- `get_gist` - 获取 Gist 详情
-
-### 通知 (2 Tools)
-- `list_notifications` - 列出通知
-- `mark_notifications_read` - 标记全部已读
-
-## 快速开始
-
-```bash
-# 安装依赖
-npm install
-
-# 设置环境变量
-export HUB_URL=http://your-hub-url
-export BASE_URL=http://your-app-url
-export GITHUB_TOKEN=ghp_your_token
-
-# 开发模式
-npm run dev
-
-# 构建并运行
-npm run build
-npm start
-```
-
-## Docker 部署
-
-```bash
-docker compose up -d
-```
-
-## 认证方式
-
-使用 GitHub Personal Access Token (PAT) 认证，免费额度 5000 次/小时。
-
-## 环境变量
-
-| 变量 | 必填 | 默认值 | 说明 |
-|------|------|--------|------|
-| `HUB_URL` | 是 | - | OpeniLink Hub 地址 |
-| `BASE_URL` | 是 | - | 本 App 公网地址 |
-| `GITHUB_TOKEN` | 是 | - | GitHub PAT |
-| `PORT` | 否 | 8088 | HTTP 监听端口 |
-| `DB_PATH` | 否 | data/github.db | SQLite 数据库路径 |
+| 分类 | 数量 | 工具 |
+|------|------|------|
+| **仓库管理** | 8 | `list_repos` `get_repo` `search_repos` `create_repo` `fork_repo` `star_repo` `get_readme` `get_file_content` |
+| **Issue 管理** | 8 | `list_issues` `create_issue` `get_issue` `update_issue` `add_comment` `close_issue` `assign_issue` `add_labels` |
+| **PR 管理** | 7 | `list_pulls` `get_pull` `create_pull` `merge_pull` `review_pull` `list_pull_files` `close_pull` |
+| **Actions** | 5 | `list_runs` `get_run` `trigger_workflow` `cancel_run` `rerun_workflow` |
+| **Release** | 3 | `list_releases` `get_release` `create_release` |
+| **Gist** | 3 | `list_gists` `create_gist` `get_gist` |
+| **通知** | 2 | `list_notifications` `mark_notifications_read` |
 
 ## 使用方式
 
-安装到 Bot 后，支持三种方式调用：
+安装到 Bot 后，支持三种方式：
 
-### 自然语言（推荐）
-
-直接用微信跟 Bot 对话，Hub AI 会自动识别意图并调用对应功能：
-
+**自然语言（推荐）** -- 直接对 Bot 说话，Hub AI 自动识别意图并调用：
 - "看看我的 GitHub 仓库有哪些 open 的 Issue"
 - "帮我创建一个 Issue 标题是修复登录 bug"
 - "合并 #42 号 PR"
 
-### 命令调用
+**命令调用** -- `/list_issues --owner xxx --repo yyy --state open`
 
-也可以使用 `/命令名 参数` 的格式直接调用：
+**AI 自动调用** -- Hub AI 在多轮对话中自动判断何时需要调用本 App。
 
-- `/list_issues --owner xxx --repo yyy --state open`
+<details>
+<summary><strong>部署与配置</strong></summary>
 
-### AI 自动调用
+### 环境变量
 
-Hub AI 在多轮对话中会自动判断是否需要调用本 App 的功能，无需手动触发。
+| 变量 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
+| `HUB_URL` | 是 | -- | OpeniLink Hub 地址 |
+| `BASE_URL` | 是 | -- | 本 App 公网地址 |
+| `GITHUB_TOKEN` | 是 | -- | GitHub Personal Access Token |
+| `PORT` | 否 | `8088` | HTTP 监听端口 |
+| `DB_PATH` | 否 | `data/github.db` | SQLite 数据库路径 |
+
+### 启动
+
+```bash
+# Docker（推荐）
+docker compose up -d
+
+# 或源码运行
+git clone https://github.com/openilink/openilink-app-github.git
+cd openilink-app-github
+npm install
+npm run build && npm start
+```
+
+### 认证方式
+
+使用 GitHub Personal Access Token (PAT) 认证。前往 [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens) 创建，免费额度 5000 次/小时。
+
+</details>
 
 ## 安全与隐私
 
-### 数据处理说明
+- **无状态工具** -- 请求即响应，不存储任何用户数据
+- **API Key 安全** -- 仅存储在服务端环境变量或 Installation 配置中，不会暴露给其他用户
+- **完全开源** -- 所有代码接受社区审查；自部署后数据完全不经过第三方
 
-- **无状态工具**：本 App 为纯工具型应用，请求即响应，**不存储任何用户数据**
-- **第三方 API 调用**：您的请求会通过 GitHub API 处理，请参阅其隐私政策
-- **API Key 安全**：您的 API Key 仅存储在服务端环境变量或 Installation 配置中，不会暴露给其他用户
+## 更多 OpeniLink Hub App
 
-### 应用市场安装（托管模式）
-
-通过 OpeniLink Hub 应用市场安装时，您的请求将通过我们的服务器转发至第三方 API。我们承诺：
-
-- 不会记录、存储或分析您的请求内容和返回结果
-- 您的 API Key 加密存储，仅用于调用对应的第三方服务
-- 所有 App 代码完全开源，接受社区审查
-
-### 自部署（推荐注重隐私的用户）
-
-如果您对数据隐私有更高要求，建议自行部署：
-
-```bash
-docker compose up -d
-```
-
-自部署后 API Key 和所有请求数据仅在您自己的服务器上。
+| App | 说明 |
+|-----|------|
+| [openilink-hub](https://github.com/openilink/openilink-hub) | 开源微信 Bot 管理平台 |
+| [app-notion](https://github.com/openilink/openilink-app-notion) | 微信操作 Notion -- 15 Tools |
+| [app-linear](https://github.com/openilink/openilink-app-linear) | 微信管理 Linear -- 13 Tools |
+| [app-amap](https://github.com/openilink/openilink-app-amap) | 微信查高德地图 -- 10 Tools |
+| [app-lark](https://github.com/openilink/openilink-app-lark) | 微信 <-> 飞书桥接 -- 34 Tools |
+| [app-slack](https://github.com/openilink/openilink-app-slack) | 微信 <-> Slack 桥接 -- 23 Tools |
+| [app-dingtalk](https://github.com/openilink/openilink-app-dingtalk) | 微信 <-> 钉钉桥接 -- 20 Tools |
+| [app-discord](https://github.com/openilink/openilink-app-discord) | 微信 <-> Discord 桥接 -- 19 Tools |
+| [app-google](https://github.com/openilink/openilink-app-google) | 微信操作 Google Workspace -- 18 Tools |
 
 ## License
 
