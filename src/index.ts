@@ -9,6 +9,7 @@ import { HubClient } from "./hub/client.js";
 import { Router } from "./router.js";
 import { handleWebhook } from "./hub/webhook.js";
 import { handleOAuthSetup, handleOAuthRedirect } from "./hub/oauth.js";
+import { handleSettingsPage, handleSettingsVerify, handleSettingsSave } from "./hub/settings.js";
 import { getManifest } from "./hub/manifest.js";
 import { collectAllTools } from "./tools/index.js";
 import type { HubEvent, Installation } from "./hub/types.js";
@@ -29,12 +30,21 @@ async function main(): Promise<void> {
   const store = new Store(config.dbPath);
   console.log("[main] 数据库初始化完成");
 
-  // 3. 初始化 GitHub Octokit 客户端
-  const octokit = new Octokit({ auth: config.githubToken });
-  console.log("[main] GitHub 客户端初始化完成");
+  // 3. 初始化 GitHub Octokit 客户端（如果环境变量中配置了 GitHub Token）
+  const hasGithubCredentials = !!config.githubToken;
+  const octokit = hasGithubCredentials
+    ? new Octokit({ auth: config.githubToken })
+    : null;
 
-  // 4. 收集所有 tools
-  const { definitions, handlers } = collectAllTools(octokit);
+  if (octokit) {
+    console.log("[main] GitHub 客户端初始化完成");
+  } else {
+    console.log("[main] 未配置 GitHub Token，跳过默认客户端初始化（云端托管模式，用户安装时填写）");
+  }
+
+  // 4. 收集所有 tools（如果没有默认客户端则用空 token 客户端仅收集定义）
+  const toolsSdkClient = octokit ?? new Octokit();
+  const { definitions, handlers } = collectAllTools(toolsSdkClient);
   console.log(`[main] 已注册 ${definitions.length} 个工具`);
 
   // 5. 初始化路由器
@@ -55,17 +65,17 @@ async function main(): Promise<void> {
 
     /** 尝试读取本地加密配置，用其中的 github_token 创建临时客户端 */
     const localCfg = store.getConfig(installation.id, installation.appToken);
-    let perInstallOctokit = octokit;
+    let perInstallOctokit = toolsSdkClient;
     if (localCfg?.github_token) {
       perInstallOctokit = new Octokit({ auth: localCfg.github_token });
       console.log(`[main] 使用安装 ${installation.id} 的本地加密 github_token`);
     }
 
     /** 用 per-installation 客户端重新收集工具处理器 */
-    const perHandlers = perInstallOctokit === octokit
+    const perHandlers = perInstallOctokit === toolsSdkClient
       ? handlers
       : collectAllTools(perInstallOctokit).handlers;
-    const perRouter = perInstallOctokit === octokit
+    const perRouter = perInstallOctokit === toolsSdkClient
       ? router
       : new Router(perHandlers);
 
@@ -85,9 +95,9 @@ async function main(): Promise<void> {
         return;
       }
 
-      // GET /oauth/setup - OAuth 安装流程
-      if (method === "GET" && pathname === "/oauth/setup") {
-        handleOAuthSetup(req, res, config);
+      // GET/POST /oauth/setup - OAuth 安装流程（显示配置表单 / 提交后跳转授权）
+      if (pathname === "/oauth/setup" && (method === "GET" || method === "POST")) {
+        await handleOAuthSetup(req, res, config);
         return;
       }
 
@@ -131,6 +141,24 @@ async function main(): Promise<void> {
           .catch((err) => console.error("[oauth] 模式2同步工具失败:", err));
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ webhook_url: `${config.baseUrl}/hub/webhook` }));
+        return;
+      }
+
+      // GET /settings — 设置页面（输入 token 验证身份）
+      if (method === "GET" && pathname === "/settings") {
+        handleSettingsPage(req, res);
+        return;
+      }
+
+      // POST /settings/verify — 验证 token 后显示配置表单
+      if (method === "POST" && pathname === "/settings/verify") {
+        await handleSettingsVerify(req, res, config, store);
+        return;
+      }
+
+      // POST /settings/save — 保存修改后的配置
+      if (method === "POST" && pathname === "/settings/save") {
+        await handleSettingsSave(req, res, config, store);
         return;
       }
 
