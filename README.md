@@ -92,3 +92,33 @@ docker compose up -d
 | `GITHUB_TOKEN` | 是 | - | GitHub PAT |
 | `PORT` | 否 | 8088 | HTTP 监听端口 |
 | `DB_PATH` | 否 | data/github.db | SQLite 数据库路径 |
+
+## 安全与隐私
+
+### 数据处理说明
+
+- **无状态工具**：本 App 为纯工具型应用，请求即响应，**不存储任何用户数据**
+- **第三方 API 调用**：您的请求会通过 GitHub API 处理，请参阅其隐私政策
+- **API Key 安全**：您的 API Key 仅存储在服务端环境变量或 Installation 配置中，不会暴露给其他用户
+
+### 应用市场安装（托管模式）
+
+通过 OpeniLink Hub 应用市场安装时，您的请求将通过我们的服务器转发至第三方 API。我们承诺：
+
+- 不会记录、存储或分析您的请求内容和返回结果
+- 您的 API Key 加密存储，仅用于调用对应的第三方服务
+- 所有 App 代码完全开源，接受社区审查
+
+### 自部署（推荐注重隐私的用户）
+
+如果您对数据隐私有更高要求，建议自行部署：
+
+```bash
+docker compose up -d
+```
+
+自部署后 API Key 和所有请求数据仅在您自己的服务器上。
+
+## License
+
+MIT
