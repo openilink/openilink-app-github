@@ -23,13 +23,25 @@ const SYNC_DEADLINE_MS = 2500;
 /** 超时哨兵，用于区分 onCommand 返回 null 和真正超时 */
 const TIMEOUT_SENTINEL = Symbol("timeout");
 
+/** 请求体最大大小：1MB */
+const MAX_BODY_SIZE = 1_048_576;
+
 /**
- * 从请求流中读取完整的 body（Buffer）
+ * 从请求流中读取完整的 body（Buffer），限制最大 1MB
  */
 export function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error("请求体超过 1MB 限制"));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
